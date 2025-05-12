@@ -10,6 +10,7 @@ namespace Farmacia_Negocio
 {
     public static class FacturaNegocio
     {
+
         public static int GuardarVentaCabecera(VentaCabecera_Entidades venta)
         {
             return Maestro_Factura_Datos.GuardarVentaCabecera(venta);
@@ -18,5 +19,7 @@ namespace Farmacia_Negocio
         {
             Maestro_Factura_Datos.GuardarVentaDetalle(ventaId,detalles);
         }
+      
+
     }
 }

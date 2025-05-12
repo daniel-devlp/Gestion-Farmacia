@@ -1,10 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data;
-using System.Data.SqlClient;
+using System.Drawing;
+using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 using Farmacia_Entidades;
 using Farmacia_Negocio;
+using iTextSharp.text;
+using iTextSharp.text.pdf;
+using System.IO;
 
 namespace Farmacia_Presentacion
 {
@@ -19,16 +23,19 @@ namespace Farmacia_Presentacion
         public Form_Venta()
         {
             InitializeComponent();
+
         }
         private void Form_Venta_Load(object sender, EventArgs e)
         {
             InicializarValoresVenta();
+            rtbFactura.Font = new System.Drawing.Font("Courier New", 10); // Fuente monoespaciada
+            ActualizarVistaFactura();
         }
 
         private void InicializarValoresVenta()
         {
             venta.ListaVentaDetalle = new List<VentaDetalle_Entidades>();
-            venta.FechaComprobante = DateTime.Now;
+            venta.FechaComprobante =DateTime.Now;
         }
 
         private void pictureBox1_Click(object sender, EventArgs e)
@@ -37,7 +44,7 @@ namespace Farmacia_Presentacion
         }
         private void LlamarFormularioClientes()
         {
-            Form_Clientes form_Clientes = new Form_Clientes();
+            Clientes form_Clientes = new Clientes();
             form_Clientes.ShowDialog();
             _clienteSeleccionado = form_Clientes.ClienteSeleccionado;
             if (form_Clientes.ClienteSeleccionado != null)
@@ -54,43 +61,6 @@ namespace Farmacia_Presentacion
         }
         #region Codigo Cabecera
 
-        private void BuscarClientePorCedula(string cedulaRuc)
-        {
-            //esta variable es true cuando encuentre un cliente por medio de la busqueda
-            bool resultado = false;
-            //buscar por el criterio
-            foreach (var item in Clientes_Negocio.DevolverListadoClientes())
-            {
-                if (item.Cedula == cedulaRuc)
-                {
-                    //Asociamos el cliente encontrado al objeto venta.cliente
-                    venta.Cliente = item;
-                    //Cargar los datos en pantalla
-                    CargarDatosClientePantalla(item.Id);
-                    resultado = true;
-                }
-            }
-            //No encontro el cliente
-            if (!resultado)
-            {
-                EncerarDatos();
-                MessageBox.Show("No se encontro a un cliente con esa Cedula",
-                    "Cliente no encontrado",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                textBox_CedulaRuc.Focus();
-            }
-        }
-
-        private void EncerarDatos()
-        {
-            textBox_Apellidos.Text = string.Empty;
-            textBox_Nombres.Text = string.Empty;
-            textBox_Correo.Text = string.Empty;
-            textBox_Telefono.Text = string.Empty;
-            textBox_Direccion.Text = string.Empty;
-            textBoxID.Text = string.Empty;
-        }
-
         private void CargarDatosClientePantalla(int id)
         {
             cliente = Clientes_Negocio.DevolverClientePorId(id);
@@ -98,9 +68,9 @@ namespace Farmacia_Presentacion
             textBox_Apellidos.Text = cliente.Apellidos;
             textBox_Nombres.Text = cliente.Nombres;
             textBox_CedulaRuc.Text = cliente.Cedula;
-            textBox_Direccion.Text= cliente.Direccion;
-            textBox_Telefono.Text= cliente.Telefono;
-            textBox_Correo.Text= cliente.Correo;
+            textBox_Direccion.Text = cliente.Direccion;
+            textBox_Telefono.Text = cliente.Telefono;
+            textBox_Correo.Text = cliente.Correo;
         }
 
         #endregion
@@ -124,22 +94,165 @@ namespace Farmacia_Presentacion
                 textBox_Cantidad.Focus();
             }
         }
-
         private void button_Agregar_Click(object sender, EventArgs e)
         {
-            if (ValidarCantidad())
-                return;
-            if (venta.Cliente != null)
+            try
             {
-                AgregarProductoVenta();
-                CalcularMontoVenta();
-            }
-            else
-            {
-                MessageBox.Show("Por favor Ingrese un cliente", "Advertencia", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
+                // 1. Validaciones básicas
+                if (ValidarCantidad())
+                    return;
 
+                if (venta.Cliente == null)
+                {
+                    MessageBox.Show("Por favor ingrese un cliente", "Advertencia",
+                                  MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (_productoSeleccionado == null)
+                {
+                    MessageBox.Show("Por favor seleccione un producto", "Advertencia",
+                                  MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                int cantidad = Convert.ToInt32(textBox_Cantidad.Text);
+                if (_productoSeleccionado.Stock <= 0)
+                {
+                    MessageBox.Show($"El producto {_productoSeleccionado.NombreComercial} no tiene stock disponible",
+                                  "Stock agotado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (cantidad > _productoSeleccionado.Stock)
+                {
+                    MessageBox.Show($"No hay suficiente stock. Disponible: {_productoSeleccionado.Stock}",
+                                  "Stock insuficiente", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // 2. Si es el primer producto, generar número de comprobante (pero no guardar aún)
+                if (venta.Id == 0)
+                {
+                    if (string.IsNullOrEmpty(venta.NumeroComprobante))
+                    {
+                        venta.NumeroComprobante = GenerarNumeroComprobante();
+                    }
+
+                    MessageBox.Show($"Venta iniciada. N°: {venta.NumeroComprobante}",
+                                  "Información", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+
+                // 3. Verificar si el producto ya está en la venta
+                var detalleExistente = venta.ListaVentaDetalle.FirstOrDefault(d => d.producto.Id == _productoSeleccionado.Id);
+
+                // 4. Actualizar la lista de productos localmente (sin guardar en BD aún)
+                if (detalleExistente != null)
+                {
+                    detalleExistente.Cantidad += cantidad;
+                    detalleExistente.Subtotal = detalleExistente.Cantidad * detalleExistente.PrecioVenta;
+                }
+                else
+                {
+                    AgregarProductoVenta();
+                }
+
+                // 5. Actualizar el stock localmente (sin guardar en BD aún)
+                _productoSeleccionado.Stock -= cantidad;
+
+                // 6. Actualizar la interfaz
+                ActualizarVistaFactura();
+                CalcularMontoVenta();
+                textBox_NumeroComprobante.Text = venta.NumeroComprobante;
+
+                MessageBox.Show($"Producto agregado. Stock restante: {_productoSeleccionado.Stock}",
+                              "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (FormatException)
+            {
+                MessageBox.Show("Por favor ingrese valores numéricos válidos", "Error de formato",
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (OverflowException)
+            {
+                MessageBox.Show("La cantidad ingresada es demasiado grande", "Error",
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error inesperado: {ex.Message}", "Error",
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                LimpiarControlesProducto();
+            }
         }
+        private void LimpiarControlesProducto()
+        {
+            textBox_NombreGenerico.Clear();
+            text_NombreComercial.Clear();
+            textBox_Precio.Clear();
+            textBox_Presentacion.Clear();
+            textBox_Cantidad.Clear();
+            _productoSeleccionado = null;
+        }
+        private string GenerarNumeroComprobante()
+        {
+            return $"FAC-{DateTime.Now:yyyyMMddHHmmss}";
+        }
+
+        private void LimpiarFormulario(){
+
+            try
+            {
+                // 1. Reiniciar la entidad venta
+                venta = new VentaCabecera_Entidades
+                {
+                    ListaVentaDetalle = new List<VentaDetalle_Entidades>(),
+                    FechaComprobante = DateTime.Now,
+                };
+
+                // 2. Limpiar controles de cliente
+                textBoxID.Clear();
+                textBox_CedulaRuc.Clear();
+                textBox_Nombres.Clear();
+                textBox_Apellidos.Clear();
+                textBox_Telefono.Clear();
+                textBox_Correo.Clear();
+                textBox_Direccion.Clear();
+
+                // 3. Limpiar controles de productos
+                textBox_NombreGenerico.Clear();
+                text_NombreComercial.Clear();
+                textBox_Precio.Clear();
+                textBox_Presentacion.Clear();
+                textBox_Cantidad.Clear();
+                _productoSeleccionado = null;
+
+                // 4. Limpiar totales
+                textBoxIVA.Clear();
+                textBoxSUBT.Clear();
+                textBoxTOTAL.Clear();
+
+                // 5. Reiniciar DataGridView
+                dataGridView_DetalleVenta.DataSource = null;
+                dataGridView_DetalleVenta.Rows.Clear();
+
+                // 6. Actualizar fecha y número de comprobante
+                venta.NumeroComprobante = GenerarNumeroComprobante();
+                textBox_NumeroComprobante.Text = venta.NumeroComprobante;
+
+                // 7. Establecer foco en campo inicial
+                textBox_CedulaRuc.Focus();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al limpiar formulario: {ex.Message}", "Error",
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        
 
         private bool ValidarCantidad()
         {
@@ -227,14 +340,14 @@ namespace Farmacia_Presentacion
                         if (venta.Id == 0)
                         {
                             // Guardar la cabecera de la venta y obtener el ID
-                            int ventaId = FacturaNegocio.GuardarVentaCabecera(venta);
+                           // int ventaId = FacturaNegocio.GuardarVentaCabecera(venta);
                             venta.Id = ventaId;
                             MessageBox.Show("Venta guardada con éxito. ID: " + ventaId, "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
                         else
                         {
                             // Guardar solo los detalles de la venta usando el ID existente
-                            FacturaNegocio.GuardarVentaDetalle(venta.Id, venta.ListaVentaDetalle);
+                            //FacturaNegocio.GuardarVentaDetalle(venta.Id, venta.ListaVentaDetalle);
                             MessageBox.Show("Producto añadido a la venta existente. ID: " + venta.Id, "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
 
@@ -327,7 +440,7 @@ namespace Farmacia_Presentacion
         #endregion
 
 
-        
+
         private void nuevaVentaToolStripMenuItem_Click(object sender, EventArgs e)
         {
             textBoxID.Text = string.Empty;
@@ -343,16 +456,23 @@ namespace Farmacia_Presentacion
             textBox_Cantidad.Clear();
             venta.ListaVentaDetalle.Clear();
             dataGridView_DetalleVenta.DataSource = null;
-            venta = new VentaCabecera_Entidades();  
+            venta = new VentaCabecera_Entidades();
         }
 
         private void button_Clientes_Click(object sender, EventArgs e)
         {
-            GuardarCliente();
-            CargarDatosClientePantalla(cliente.Id);
+            
+                GuardarCliente();
+                CargarDatosClientePantalla(cliente.Id);
+            
+            
+    
         }
+    
         private void GuardarCliente()
         {
+            
+
             cliente.Apellidos = textBox_Apellidos.Text.Trim().ToUpper();
             cliente.Nombres = textBox_Nombres.Text.Trim().ToUpper();
             cliente.Cedula = textBox_CedulaRuc.Text;
@@ -369,6 +489,201 @@ namespace Farmacia_Presentacion
             {
                 MessageBox.Show("Error al guardar los datos", "Error");
             }
+        }
+
+        private void button_Nuevo_Click(object sender, EventArgs e)
+        {
+            LimpiarFormulario();
+            rtbFactura.Font = new System.Drawing.Font("Courier New", 10); // Fuente monoespaciada
+            ActualizarVistaFactura();
+        }
+
+        private void richTextBox1_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+        private void ActualizarVistaFactura()
+        {
+            if(venta.Cliente == null || venta.ListaVentaDetalle.Count == 0)
+{
+                rtbFactura.Text = "No hay datos de factura disponibles";
+                return;
+            }
+
+            StringBuilder sb = new StringBuilder();
+
+            // Diseño modernizado de la factura
+            sb.AppendLine("╔══════════════════════════════════════════════════════════╗");
+            sb.AppendLine("║               FARMACIAS ECONOMICAS PLUS                 ║");
+            sb.AppendLine("╟──────────────────────────────────────────────────────────╢");
+            sb.AppendLine("║ Av. El Rey ∙ Tel: 0988162040 ∙ RUC: 1234567890123       ║");
+            sb.AppendLine("╚══════════════════════════════════════════════════════════╝");
+            sb.AppendLine();
+            sb.AppendLine("          ╔══════════════════════════════════╗");
+            sb.AppendLine($"          ║        FACTURA N° {venta.NumeroComprobante.PadRight(10)}    ║");
+            sb.AppendLine($"          ║        {DateTime.Now:dd/MM/yyyy HH:mm}          ║");
+            sb.AppendLine("          ╚══════════════════════════════════╝");
+            sb.AppendLine();
+
+            // Sección de cliente con diseño mejorado
+            sb.AppendLine("┌─────────────────── INFORMACIÓN DEL CLIENTE ──────────────────┐");
+            sb.AppendLine($"│ Nombre:    {venta.Cliente.Nombres} {venta.Cliente.Apellidos}".PadRight(60) + "│");
+            sb.AppendLine($"│ Cédula:    {venta.Cliente.Cedula}".PadRight(60) + "│");
+            sb.AppendLine($"│ Dirección: {venta.Cliente.Direccion}".PadRight(60) + "│");
+            sb.AppendLine($"│ Teléfono:  {venta.Cliente.Telefono}".PadRight(60) + "│");
+            sb.AppendLine("└──────────────────────────────────────────────────────────────┘");
+            sb.AppendLine();
+
+            // Tabla de productos con bordes estilizados
+            sb.AppendLine("┌──────────────────────────────┬────────┬───────────┬──────────────┐");
+            sb.AppendLine("│          PRODUCTO            │ CANT.  │  P.UNIT   │   SUBTOTAL   │");
+            sb.AppendLine("├──────────────────────────────┼────────┼───────────┼──────────────┤");
+
+            foreach (var detalle in venta.ListaVentaDetalle)
+            {
+                sb.AppendLine(
+                    "│ " + detalle.producto.NombreComercial.PadRight(28) +
+                    "│ " + detalle.Cantidad.ToString().PadLeft(6) +
+                    " │ " + detalle.PrecioVenta.ToString("0.00").PadLeft(7) +
+                    " │ " + detalle.Subtotal.ToString("0.00").PadLeft(12) + " │"
+                );
+            }
+
+            sb.AppendLine("└──────────────────────────────┴────────┴───────────┴──────────────┘");
+            sb.AppendLine();
+
+            // Totales con diseño mejorado
+            double subtotal = venta.ListaVentaDetalle.Sum(d => d.Subtotal);
+            double iva = subtotal * 0.12;
+            double total = subtotal + iva;
+
+            sb.AppendLine("┌──────────────────────────────────────────────────────────────┐");
+            sb.AppendLine($"│ SUBTOTAL: {"".PadLeft(38)}{subtotal.ToString("0.00").PadLeft(15)} │");
+            sb.AppendLine($"│ IVA (12%): {"".PadLeft(37)}{iva.ToString("0.00").PadLeft(15)} │");
+            sb.AppendLine($"│ TOTAL: {"".PadLeft(41)}{total.ToString("0.00").PadLeft(15)} │");
+            sb.AppendLine("└──────────────────────────────────────────────────────────────┘");
+            sb.AppendLine();
+            sb.AppendLine("            ╔════════════════════════════╗");
+            sb.AppendLine("            ║   ¡GRACIAS POR SU COMPRA!  ║");
+            sb.AppendLine("            ╚════════════════════════════╝");
+
+            rtbFactura.Text = sb.ToString();
+        }
+
+        private void GuardarFacturaComoPDF()
+        {
+            if (string.IsNullOrEmpty(rtbFactura.Text) || rtbFactura.Text == "No hay datos de factura disponibles")
+            {
+                MessageBox.Show("No hay datos de factura para guardar", "Advertencia", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            SaveFileDialog saveFileDialog = new SaveFileDialog();
+            saveFileDialog.Filter = "PDF files (*.pdf)|*.pdf";
+            saveFileDialog.FileName = $"Factura_{venta.NumeroComprobante}.pdf";
+
+            if (saveFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    // Crear documento PDF
+                    Document document = new Document(PageSize.A4, 20, 20, 30, 30);
+                    PdfWriter writer = PdfWriter.GetInstance(document, new FileStream(saveFileDialog.FileName, FileMode.Create));
+
+                    document.Open();
+
+                    // Configurar fuente utilizando iTextSharp.text.Font
+                    iTextSharp.text.Font font = FontFactory.GetFont(FontFactory.COURIER, 10);
+
+                    // Dividir el texto del RichTextBox por líneas
+                    var lines = rtbFactura.Text.Split(new[] { "\n" }, StringSplitOptions.None);
+
+                    foreach (string line in lines)
+                    {
+                        // Agregar cada línea con la fuente configurada
+                        document.Add(new Paragraph(line, font));
+                    }
+
+                    document.Close();
+
+                    MessageBox.Show("Factura guardada como PDF exitosamente", "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    LimpiarFormulario();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error al guardar el PDF: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                // Validar que haya productos en la venta
+                if (venta.ListaVentaDetalle.Count == 0)
+                {
+                    MessageBox.Show("No hay productos en la venta", "Advertencia",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Validar cliente
+                if (venta.Cliente == null)
+                {
+                    MessageBox.Show("Debe seleccionar un cliente", "Advertencia",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Generar número de comprobante si no existe
+                if (string.IsNullOrEmpty(venta.NumeroComprobante))
+                {
+                    venta.NumeroComprobante = GenerarNumeroComprobante();
+                }
+
+                // Guardar cabecera de venta si no está guardada
+                if (venta.Id == 0)
+                {
+                    venta.Id = FacturaNegocio.GuardarVentaCabecera(venta);
+                }
+
+                // Guardar TODOS los detalles de venta en una sola operación
+                FacturaNegocio.GuardarVentaDetalle(venta.Id, venta.ListaVentaDetalle);
+
+                // Actualizar stocks para todos los productos
+                //foreach (var detalle in venta.ListaVentaDetalle)
+               // {
+                    // IMPORTANTE: Usar valor negativo para DESCONTAR el stock
+                    //Productos_Negocio.ActualizarStock(detalle.producto.Id, -detalle.Cantidad);
+                //}
+
+                // Generar PDF
+                GuardarFacturaComoPDF();
+
+                // Mostrar resumen
+                MessageBox.Show($"Venta confirmada exitosamente.\nNúmero: {venta.NumeroComprobante}",
+                              "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                // Limpiar formulario
+                LimpiarFormulario();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al confirmar la venta: {ex.Message}", "Error",
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            Form_BusquedaFactura form = new Form_BusquedaFactura();
+            form.ShowDialog();
+        }
+
+        private void dateTimePicker2_ValueChanged(object sender, EventArgs e)
+        {
+
         }
     }
 }

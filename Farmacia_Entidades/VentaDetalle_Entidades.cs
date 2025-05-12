@@ -13,6 +13,7 @@ namespace Farmacia_Entidades
         public int Cantidad { get; set; }
         public double PrecioVenta { get; set; }
         public double Subtotal { get; set; }
+        public decimal Iva { get; set; }
         public VentaDetalle_Entidades()
         {
 

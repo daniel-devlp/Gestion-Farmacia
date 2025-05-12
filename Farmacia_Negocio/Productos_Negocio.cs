@@ -19,5 +19,13 @@ namespace Farmacia_Negocio
         {
             Producto_Datos.DescontarStock(idProducto, cantidad);
         }
+        public static void ObtenerProductoPorId(int idProducto, int cantidad)
+        {
+            Producto_Datos.ObtenerProductoPorId(idProducto);
+        }
+        public static void ActualizarStock(int idProducto, int cantidad)
+        {
+            Producto_Datos.ActualizarStock(idProducto, cantidad);
+        }
     }
 }

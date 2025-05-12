@@ -1,173 +1,176 @@
 ﻿using Farmacia_Entidades;
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Data.SqlClient;
-using System.Linq;
 
 namespace Farmacia_Datos_LINQ
 {
     public static class Maestro_Factura_Datos
     {
-        private static string connectionString = "Server=localhost\\SQLEXPRESS;Database=GestionFarmacia;Trusted_Connection=True;";
+        private static string connString = "Data Source=Daniel\\PUNTO_A;Initial Catalog=GestionFarmacia;Persist Security Info=True;User ID=sa;Password=admin123;TrustServerCertificate=True;";
 
         public static int GuardarVentaCabecera(VentaCabecera_Entidades venta)
         {
-            // Validaciones iniciales
-            if (venta == null) throw new ArgumentNullException(nameof(venta));
-            if (venta.Cliente == null) throw new ArgumentException("Cliente no puede ser nulo");
-            if (venta.ListaVentaDetalle == null || !venta.ListaVentaDetalle.Any())
-                throw new ArgumentException("Debe haber al menos un detalle de venta");
-
-            int ventaId = 0;
-            using (SqlConnection conn = new SqlConnection(connectionString))
+            using (SqlConnection conn = new SqlConnection(connString))
             {
                 conn.Open();
-                using (var transaction = conn.BeginTransaction())
+                using (SqlTransaction transaction = conn.BeginTransaction())
                 {
                     try
                     {
-                        // Calcular totales
-                        double subtotalTotal = venta.ListaVentaDetalle.Sum(d => d.Subtotal);
-                        double iva = subtotalTotal * 0.12;
-                        double totalVenta = subtotalTotal + iva;
+                        // Validación de datos requeridos
+                        if (venta.Cliente == null || venta.Cliente.Id == 0)
+                            throw new ArgumentException("Debe especificar un cliente válido");
 
-                        // Query para insertar cabecera
-                        string queryCabecera = @"INSERT INTO VentaCabecera 
-                                                (id_cliente, fechaVenta, totalVenta)
-                                                VALUES (@id_cliente, @fechaVenta, @totalVenta);
-                                                SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                        // Generar número de comprobante si no existe
+                        if (string.IsNullOrEmpty(venta.NumeroComprobante))
+                        {
+                            venta.NumeroComprobante = GenerarNumeroComprobante();
+                        }
 
-                        using (SqlCommand cmd = new SqlCommand(queryCabecera, conn, transaction))
+                        // Establecer fecha si no está definida
+                        if (venta.FechaComprobante == DateTime.MinValue)
+                        {
+                            venta.FechaComprobante = DateTime.Now;
+                        }
+
+                        string query = @"INSERT INTO VentaCabecera 
+                                       (id_cliente, FechaComprobante, NumeroComprobante)
+                                       VALUES (@id_cliente, @fechaComprobante, @numeroComprobante);
+                                       SELECT SCOPE_IDENTITY();";
+
+                        using (SqlCommand cmd = new SqlCommand(query, conn, transaction))
                         {
                             cmd.Parameters.AddWithValue("@id_cliente", venta.Cliente.Id);
-                            cmd.Parameters.AddWithValue("@fechaVenta", venta.FechaComprobante);
-                            cmd.Parameters.AddWithValue("@totalVenta", totalVenta);
+                            cmd.Parameters.AddWithValue("@fechaComprobante", venta.FechaComprobante);
+                            cmd.Parameters.AddWithValue("@numeroComprobante", venta.NumeroComprobante);
 
-                            ventaId = Convert.ToInt32(cmd.ExecuteScalar());
+                            int idVenta = Convert.ToInt32(cmd.ExecuteScalar());
+                            transaction.Commit();
+                            return idVenta;
                         }
-
-                        // Guardar detalles
-                        GuardarVentaDetalle(ventaId, venta.ListaVentaDetalle, conn, transaction);
-
-                        transaction.Commit();
-                        return ventaId;
                     }
                     catch (Exception ex)
                     {
                         transaction.Rollback();
-                        throw new Exception("Error al guardar la venta: " + ex.Message, ex);
+                        throw new Exception("Error al guardar cabecera de venta: " + ex.Message);
                     }
                 }
             }
         }
 
-        public static void GuardarVentaDetalle(int ventaId, List<VentaDetalle_Entidades> detalles, SqlConnection conn = null, SqlTransaction transaction = null)
+        public static void GuardarVentaDetalle(int ventaId, List<VentaDetalle_Entidades> detalles)
         {
-            bool ownConnection = false;
-
-            try
-            {
-                // Si no nos pasaron conexión, creamos una nueva
-                if (conn == null)
-                {
-                    conn = new SqlConnection(connectionString);
-                    conn.Open();
-                    ownConnection = true;
-                    transaction = conn.BeginTransaction();
-                }
-
-                foreach (var detalle in detalles)
-                {
-                    // Validar stock disponible
-                    if (detalle.producto.Stock < detalle.Cantidad)
-                    {
-                        throw new InvalidOperationException($"Stock insuficiente para el producto {detalle.producto.NombreComercial}");
-                    }
-
-                    // Calcular valores para el detalle
-                    double detalleIva = detalle.Subtotal * 0.12;
-                    double detalleTotal = detalle.Subtotal + detalleIva;
-
-                    // Insertar detalle
-                    string detalleQuery = @"INSERT INTO VentaDetalle 
-                                            (Id_Venta, Id_Producto, PrecioVenta, Cantidad, Subtotal, Iva, Total)
-                                            VALUES (@Id_Venta, @Id_Producto, @PrecioVenta, @Cantidad, @Subtotal, @Iva, @Total)";
-
-                    using (SqlCommand cmd = new SqlCommand(detalleQuery, conn, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@Id_Venta", ventaId);
-                        cmd.Parameters.AddWithValue("@Id_Producto", detalle.producto.Id);
-                        cmd.Parameters.AddWithValue("@PrecioVenta", detalle.PrecioVenta);
-                        cmd.Parameters.AddWithValue("@Cantidad", detalle.Cantidad);
-                        cmd.Parameters.AddWithValue("@Subtotal", detalle.Subtotal);
-                        cmd.Parameters.AddWithValue("@Iva", detalleIva);
-                        cmd.Parameters.AddWithValue("@Total", detalleTotal);
-                        cmd.ExecuteNonQuery();
-                    }
-
-                    // Actualizar stock
-                    string updateStock = @"UPDATE Productos SET stock = stock - @cantidad 
-                                          WHERE id = @id_producto";
-
-                    using (SqlCommand cmd = new SqlCommand(updateStock, conn, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@id_producto", detalle.producto.Id);
-                        cmd.Parameters.AddWithValue("@cantidad", detalle.Cantidad);
-                        int affectedRows = cmd.ExecuteNonQuery();
-
-                        if (affectedRows == 0)
-                        {
-                            throw new InvalidOperationException($"No se pudo actualizar el stock para el producto {detalle.producto.NombreComercial}");
-                        }
-                    }
-                }
-
-                if (ownConnection)
-                {
-                    transaction.Commit();
-                }
-            }
-            catch
-            {
-                if (ownConnection && transaction != null)
-                {
-                    transaction.Rollback();
-                }
-                throw;
-            }
-            finally
-            {
-                if (ownConnection && conn != null)
-                {
-                    conn.Close();
-                }
-            }
-        }
-
-        public static int RegistrarVentaCompleta(VentaCabecera_Entidades venta)
-        {
-            using (SqlConnection conn = new SqlConnection(connectionString))
+            using (SqlConnection conn = new SqlConnection(connString))
             {
                 conn.Open();
-                using (var transaction = conn.BeginTransaction())
+                using (SqlTransaction transaction = conn.BeginTransaction())
                 {
                     try
                     {
-                        // Guardar cabecera
-                        int ventaId = GuardarVentaCabecera(venta);
+                        foreach (var detalle in detalles)
+                        {
+                            // Validar producto y cantidad
+                            if (detalle.producto == null || detalle.producto.Id == 0)
+                                throw new ArgumentException("Producto no válido en detalle");
 
-                        // Guardar detalles y actualizar stock
-                        GuardarVentaDetalle(ventaId, venta.ListaVentaDetalle, conn, transaction);
+                            if (detalle.Cantidad <= 0)
+                                throw new ArgumentException("La cantidad debe ser mayor que cero");
 
+                            // 1. Primero verificamos el stock disponible
+                            string queryVerificarStock = @"SELECT Stock FROM Productos WHERE Id = @Id_Producto";
+                            int stockActual;
+
+                            using (SqlCommand cmd = new SqlCommand(queryVerificarStock, conn, transaction))
+                            {
+                                cmd.Parameters.AddWithValue("@Id_Producto", detalle.producto.Id);
+                                stockActual = Convert.ToInt32(cmd.ExecuteScalar());
+                            }
+
+                            if (stockActual < detalle.Cantidad)
+                            {
+                                //throw new Exception($"Stock insuficiente para el producto ID {detalle.producto.Id}. Disponible: {stockActual}, Requerido: {detalle.Cantidad}");
+                            }
+
+                            // 2. Insertar detalle de venta
+                            string queryInsertDetalle = @"INSERT INTO VentaDetalle 
+                                                (Id_Venta, Id_Producto, Cantidad, PrecioVenta, Subtotal, Iva)
+                                                VALUES (@Id_Venta, @Id_Producto, @Cantidad, @PrecioVenta, @Subtotal, @Iva)";
+
+                            using (SqlCommand cmd = new SqlCommand(queryInsertDetalle, conn, transaction))
+                            {
+                                cmd.Parameters.AddWithValue("@Id_Venta", ventaId);
+                                cmd.Parameters.AddWithValue("@Id_Producto", detalle.producto.Id);
+                                cmd.Parameters.AddWithValue("@Cantidad", detalle.Cantidad);
+                                cmd.Parameters.AddWithValue("@PrecioVenta", detalle.PrecioVenta);
+                                cmd.Parameters.AddWithValue("@Subtotal", detalle.Subtotal);
+                                cmd.Parameters.AddWithValue("@Iva", detalle.Iva);
+                                cmd.ExecuteNonQuery();
+                            }
+
+                            // 3. Actualizar el stock (descontar la cantidad vendida)
+                            string queryActualizarStock = @"UPDATE Productos 
+                                                 SET Stock = Stock - @Cantidad 
+                                                 WHERE Id = @Id_Producto";
+
+                            using (SqlCommand cmd = new SqlCommand(queryActualizarStock, conn, transaction))
+                            {
+                                cmd.Parameters.AddWithValue("@Cantidad", detalle.Cantidad);
+                                cmd.Parameters.AddWithValue("@Id_Producto", detalle.producto.Id);
+                                int rowsAffected = cmd.ExecuteNonQuery();
+
+                                if (rowsAffected == 0)
+                                {
+                                    throw new Exception($"No se pudo actualizar el stock para el producto ID {detalle.producto.Id}");
+                                }
+                            }
+                        }
                         transaction.Commit();
-                        return ventaId;
                     }
                     catch (Exception ex)
                     {
                         transaction.Rollback();
-                        throw new Exception("Error al registrar la venta completa: " + ex.Message, ex);
+                        throw new Exception("Error al guardar detalle de venta y actualizar stock: " + ex.Message);
                     }
+                }
+            }
+        }
+        
+
+        private static string GenerarNumeroComprobante()
+        {
+            // Formato: FAC-AAAAMMDD-0001
+            string fecha = DateTime.Now.ToString("yyyyMMdd");
+            string ultimoNumero = ObtenerUltimoNumeroComprobante(fecha);
+            int siguienteNumero = ultimoNumero == null ? 1 : int.Parse(ultimoNumero) + 1;
+            return $"FAC-{fecha}-{siguienteNumero.ToString("0000")}";
+        }
+
+        private static string ObtenerUltimoNumeroComprobante(string fecha)
+        {
+            using (SqlConnection conn = new SqlConnection(connString))
+            {
+                string query = @"SELECT MAX(SUBSTRING(NumeroComprobante, 13, 4))
+                               FROM VentaCabecera
+                               WHERE NumeroComprobante LIKE @patron";
+
+                using (SqlCommand cmd = new SqlCommand(query, conn))
+                {
+                    cmd.Parameters.AddWithValue("@patron", $"FAC-{fecha}-%");
+                    conn.Open();
+                    return cmd.ExecuteScalar()?.ToString();
+                }
+            }
+        }
+
+        public static DateTime ObtenerFechaServidor()
+        {
+            using (SqlConnection conn = new SqlConnection(connString))
+            {
+                conn.Open();
+                using (SqlCommand cmd = new SqlCommand("SELECT GETDATE()", conn))
+                {
+                    return (DateTime)cmd.ExecuteScalar();
                 }
             }
         }

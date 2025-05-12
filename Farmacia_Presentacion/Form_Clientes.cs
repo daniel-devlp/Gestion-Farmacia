@@ -7,13 +7,13 @@ using System.Windows.Forms;
 
 namespace Farmacia_Presentacion
 {
-    public partial class Form_Clientes : Form
+    public partial class Clientes : Form
     {
         public Cliente_Entidades ClienteSeleccionado { get; set; }
 
         private List<Cliente_Entidades> _clientesOriginales;
 
-        public Form_Clientes()
+        public Clientes()
         {
             InitializeComponent();
         }

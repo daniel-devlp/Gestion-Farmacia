@@ -1,6 +1,6 @@
 ﻿namespace Farmacia_Presentacion
 {
-    partial class Form_Clientes
+    partial class Clientes
     {
         /// <summary>
         /// Required designer variable.
@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Clientes));
             this.dataGridViewClientes = new System.Windows.Forms.DataGridView();
             this.backgroundWorker1 = new System.ComponentModel.BackgroundWorker();
             this.label1 = new System.Windows.Forms.Label();
@@ -41,68 +42,79 @@
             // dataGridViewClientes
             // 
             this.dataGridViewClientes.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            this.dataGridViewClientes.Location = new System.Drawing.Point(12, 63);
+            this.dataGridViewClientes.Location = new System.Drawing.Point(16, 78);
+            this.dataGridViewClientes.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.dataGridViewClientes.Name = "dataGridViewClientes";
-            this.dataGridViewClientes.Size = new System.Drawing.Size(977, 476);
+            this.dataGridViewClientes.RowHeadersWidth = 51;
+            this.dataGridViewClientes.Size = new System.Drawing.Size(1303, 586);
             this.dataGridViewClientes.TabIndex = 0;
             this.dataGridViewClientes.CellClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridViewClientes_CellClick);
             // 
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(419, 9);
+            this.label1.Location = new System.Drawing.Point(559, 11);
+            this.label1.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(153, 13);
+            this.label1.Size = new System.Drawing.Size(189, 16);
             this.label1.TabIndex = 1;
             this.label1.Text = "CRITERIOS DE BUSQUEDAS";
             // 
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(68, 34);
+            this.label2.Location = new System.Drawing.Point(91, 42);
+            this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(50, 13);
+            this.label2.Size = new System.Drawing.Size(61, 16);
             this.label2.TabIndex = 2;
             this.label2.Text = "CEDULA";
             // 
             // textBox_Cedula
             // 
-            this.textBox_Cedula.Location = new System.Drawing.Point(138, 31);
+            this.textBox_Cedula.Location = new System.Drawing.Point(184, 38);
+            this.textBox_Cedula.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.textBox_Cedula.Name = "textBox_Cedula";
-            this.textBox_Cedula.Size = new System.Drawing.Size(100, 20);
+            this.textBox_Cedula.Size = new System.Drawing.Size(132, 22);
             this.textBox_Cedula.TabIndex = 3;
             this.textBox_Cedula.TextChanged += new System.EventHandler(this.txtBuscarCedula_TextChanged);
             // 
             // textBox_Apellido
             // 
-            this.textBox_Apellido.Location = new System.Drawing.Point(673, 31);
+            this.textBox_Apellido.Location = new System.Drawing.Point(897, 38);
+            this.textBox_Apellido.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.textBox_Apellido.Name = "textBox_Apellido";
-            this.textBox_Apellido.Size = new System.Drawing.Size(100, 20);
+            this.textBox_Apellido.Size = new System.Drawing.Size(132, 22);
             this.textBox_Apellido.TabIndex = 6;
             this.textBox_Apellido.TextChanged += new System.EventHandler(this.txtBuscarApellido_TextChanged);
             // 
             // label3
             // 
             this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(603, 34);
+            this.label3.Location = new System.Drawing.Point(804, 42);
+            this.label3.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(59, 13);
+            this.label3.Size = new System.Drawing.Size(71, 16);
             this.label3.TabIndex = 5;
             this.label3.Text = "APELLIDO";
             // 
-            // Form_Clientes
+            // Clientes
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1001, 551);
+            this.BackColor = System.Drawing.SystemColors.ButtonHighlight;
+            this.ClientSize = new System.Drawing.Size(1335, 678);
             this.Controls.Add(this.textBox_Apellido);
             this.Controls.Add(this.label3);
             this.Controls.Add(this.textBox_Cedula);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.dataGridViewClientes);
-            this.Name = "Form_Clientes";
-            this.Text = "Form_Clientes";
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
+            this.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
+            this.Name = "Clientes";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            this.Text = "Clientes";
             this.Load += new System.EventHandler(this.Form_Clientes_Load);
             ((System.ComponentModel.ISupportInitialize)(this.dataGridViewClientes)).EndInit();
             this.ResumeLayout(false);

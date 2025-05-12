@@ -10,8 +10,8 @@ namespace Farmacia_Datos_SQLServer
 {
     public static class Cliente_Datos
     {
-        private static string connectionString = "Server=localhost\\SQLEXPRESS;Database=GestionFarmacia;Trusted_Connection=True;";
-
+        private static string connectio nString = "Data Source=Daniel\\PUNTO_A;Initial Catalog=GestionFarmacia;Persist Security Info=True;User ID=sa;Password=admin123;TrustServerCertificate=True;";
+            
         public static List<Cliente_Entidades> DevolverListadoClientes()
         {
             List<Cliente_Entidades> lista = new List<Cliente_Entidades>();
